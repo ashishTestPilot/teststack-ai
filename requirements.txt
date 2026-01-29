@@ -3,3 +3,4 @@ gunicorn
 slack_bolt
 pandas
 openai
+openpyxl
