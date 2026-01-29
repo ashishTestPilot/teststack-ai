@@ -1,16 +1,47 @@
-from flask import Flask, request, jsonify
+import os
+import pandas as pd
+from slack_bolt import App
+from slack_bolt.adapter.flask import SlackRequestHandler
+from flask import Flask, request
+from openai import OpenAI
 
-app = Flask(__name__)
+# Slack credentials from environment
+app = App(
+    token=os.environ["SLACK_BOT_TOKEN"],
+    signing_secret=os.environ["SLACK_SIGNING_SECRET"]
+)
 
-@app.route("/slack/events", methods=["POST"])
+handler = SlackRequestHandler(app)
+
+# OpenAI client
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+# Load Excel file
+df = pd.read_excel("testcases.xlsx")
+
+@app.event("app_mention")
+def handle_mention(event, say):
+    user_query = event["text"]
+
+    # Filter example (improve later)
+    context = df.head(50).to_string()
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a QA assistant using test case data."},
+            {"role": "user", "content": f"{context}\n\nQuestion: {user_query}"}
+        ]
+    )
+
+    say(response.choices[0].message.content)
+
+# Flask server
+flask_app = Flask(__name__)
+
+@flask_app.route("/slack/events", methods=["POST"])
 def slack_events():
-    data = request.json
-
-    # Slack verification step
-    if data.get("type") == "url_verification":
-        return jsonify({"challenge": data.get("challenge")})
-
-    return "OK", 200
+    return handler.handle(request)
 
 if __name__ == "__main__":
-    app.run(port=3000)
+    flask_app.run(port=3000)
